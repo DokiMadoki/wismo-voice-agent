@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: wismo-voice-agent
+    runtime: docker
+    plan: free
+    envVars:
+      - key: APP_API_KEY
+        sync: false
+      - key: TRACKINGMORE_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: wismo-orders
+          property: connectionString
+databases:
+  - name: wismo-orders
+    plan: free
+    databaseName: wismo
+    user: wismo
