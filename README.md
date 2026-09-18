@@ -96,4 +96,3 @@ Backend tests use isolated SQLite databases and mocked carrier/provider response
 
 Orders are mock data, with no Shopify write access. Robin cannot issue refunds, cancel orders, or change addresses. Human actions remain manual. Free Render services can sleep; warm the app before calls. Free PostgreSQL expires after 30 days and has no backups. Browser handoff keeps the AI/provider session active, and the observed Vapi recording captured the customer but omitted the human rep. Browser-only REVIEW_ACCESS_KEY is available for demos. It permits calls and support actions but not direct tool APIs. Shared-key login remains a controlled pilot; production would need separate customer and staff access, stronger verification, retention controls, and durable hosting.
 
-
