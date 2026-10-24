@@ -69,9 +69,9 @@
 <text x="392" y="826" font-family="Arial, sans-serif" font-size="20" font-weight="400" fill="#193d32">Join</text>
 <polyline points="995,560 915,560 915,685 225,685 225,750" fill="none" stroke="#739b84" stroke-width="4"/>
 <polygon points="225,750 218,738 232,738" fill="#739b84"/>
-<text x="375" y="669" font-family="Arial, sans-serif" font-size="22" font-weight="400" fill="#193d32">Handoff queue + issue brief</text>
+
 <polyline points="130,530 130,610 450,610 450,785 490,785" fill="none" stroke="#739b84" stroke-width="4"/>
 <polygon points="490,785 478,778 478,792" fill="#739b84"/>
 <text x="225" y="593" font-family="Arial, sans-serif" font-size="22" font-weight="400" fill="#193d32">Customer audio</text>
-<text x="65" y="1034" font-family="Arial, sans-serif" font-size="23" font-weight="400" fill="#627269">PILOT: mock orders + test-carrier updates. Free hosting may cold-start; database expires October 17, 2026.</text>
-</svg>
+<text x="65" y="1034" font-family="Arial, sans-serif" font-size="23" font-weight="400" fill="#627269">Mock orders + official test-carrier data from TrackingMore.</text>
+<rect x="366" y="646" width="290" height="30" fill="#f5f6f2"/><text x="375" y="669" font-family="Arial, sans-serif" font-size="22" font-weight="400" fill="#193d32">Handoff queue + issue brief</text></svg>
