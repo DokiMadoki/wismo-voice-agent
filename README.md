@@ -1,98 +1,136 @@
-# Doki Doki T’s WISMO — Robin
+# WISMO Voice Agent — Robin
 
-A browser voice assistant for Doki Doki T’s order support. Mock Shopify-style orders and call records are stored in PostgreSQL on Render; shipment status is fetched from TrackingMore. SQLite is available for local use.
+A browser-based voice agent that answers "Where is my order?" (WISMO) calls for an e-commerce store, with a live handoff to a human support rep when the customer needs one.
+
+Robin verifies the caller, looks up their order, checks the carrier for each package, and explains the status in plain speech. It never invents a delivery date, refund or transfer. When a person is needed, a rep joins the same audio room with an AI-written brief, so the customer doesn't have to repeat themselves. A custom dashboard tracks outcomes, sentiment, call duration and handoffs.
+
+The store, **Doki Doki T’s**, is a fictional T-shirt shop. All customers and orders are mock data.
+
+<!-- Walkthrough video: add the unlisted YouTube link here -->
+<!-- Screenshots: add docs/screenshots/voice.png, support.png and dashboard.png, then uncomment:
+| Customer call | Support desk | Dashboard |
+| --- | --- | --- |
+| ![Customer call](docs/screenshots/voice.png) | ![Support desk](docs/screenshots/support.png) | ![Dashboard](docs/screenshots/dashboard.png) |
+-->
+
+![Architecture](architecture/wismo-architecture.png)
+
+## What it does
+
+- **Verifies before it discloses.** An order number plus email, or an order number plus postcode, is enough. An order number alone reveals nothing. Email-only lookup finds multiple orders and asks the caller which one they mean.
+- **Tracks every package separately.** Split shipments are explained package by package. Unshipped items are described as unshipped, with no guessed dates.
+- **Only reports carrier ETAs.** The store's original estimate is kept out of the voice tools entirely, so the agent can't present it as a delivery date.
+- **Treats "delivered" carefully.** Carrier-marked delivered isn't proof of receipt. Robin asks whether the parcel arrived and moves to the missing-delivery flow only if the caller says so.
+- **Hands off honestly.** A handoff request, a rep joining, and confirmed two-way audio are recorded as separate states. If no rep is available, Robin says so and doesn't promise a callback.
+- **Minimizes personal data.** Email, phone and full address are stripped from tool results before they reach the language model, and from the rep's brief.
 
 ## How it works
 
-The customer starts an audio call at `/voice`. Vapi provides speech recognition, the language model, and Robin's voice. Its authenticated tools call FastAPI to verify the order, fetch tracking, record outcomes, or request human support. The custom dashboard uses the application's own call records.
+1. The customer starts a browser call at `/voice`. Vapi handles speech recognition, the language model and Robin's voice.
+2. During the call, Vapi invokes authenticated tools on the FastAPI backend: `lookup_order`, `track_order`, `record_outcome` and `request_human`.
+3. Tracking comes from the TrackingMore v4 API. If the carrier can't be reached, Robin says it can't confirm the status and offers human help.
+4. For a handoff, a rep marks themselves available at `/support`, reads the brief and joins the same Daily audio room. The backend asks Vapi to mute Robin. Leaving the call restores the AI.
+5. Vapi's end-of-call report is stored with the call record. The dashboard at `/` reads the app's own records, not the provider's analytics.
 
-A human marks themselves available at `/support`, reviews the conversation brief, and joins the same Daily audio room. After the rep joins, the backend requests Vapi to mute Robin. Leaving the support call restores AI audio. This is a browser room takeover; Robin remains in the room. A live two-person test passed: two participants confirmed audio in both directions, Robin silent, and an accurate issue brief.
+## Tech stack
 
-## Demo scenarios
+Python 3.12, FastAPI, SQLite (local) / PostgreSQL (hosted), Vapi (voice AI), Daily (WebRTC audio rooms), TrackingMore (carrier tracking), vanilla HTML/JS, Docker, Render.
 
-All customers and orders below are mock data. TrackingMore's official test carrier supplies the shipment updates; these are not real parcels.
+## Quick start
 
-| Order | Email | Scenario |
-| --- | --- | --- |
-| DD1042 | alex@example.com | In transit |
-| DD1043 | jamie@example.com | Carrier-marked delivered; report missing to test escalation |
-| DD1044 | sam@example.com | Carrier exception |
-| DD1045 | alex@example.com | Unshipped |
-| DD1046 | taylor@example.com | Split shipment: one tracked package, one unshipped item |
+No third-party keys are needed to run the backend, dashboard and tests. Without a TrackingMore key, tracking requests return an "unavailable" result, which is also how the agent handles a carrier outage.
 
-Alex's email alone returns two orders for disambiguation. Order number plus email, or order number plus shipping postcode, is sufficient verification. Demo postcode is `10001`. An order number alone does not reveal details. The tool removes email, phone, and full address from verified results.
-
-Tracking checkpoints can predate the mock purchase dates because the carrier fixtures are canned data. The agent reports the carrier's dates accurately. The store's original estimate remains in the mock database but is excluded from voice tools. Only a live carrier estimate can be reported as an ETA. Missing provider records and outages return an explicit unavailable result.
-
-## Local setup
-
-Requires Python 3.12. From the repository directory:
-
-```powershell
-Copy-Item .env.example .env
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+```bash
+cp .env.example .env
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Edit `.env` privately. Set `APP_API_KEY` to a random secret of at least 32 characters and add your TrackingMore key. Use `python -c "import secrets; print(secrets.token_urlsafe(48))"` to generate the application key. Do not commit or display secrets in the walkthrough.
+In `.env`, set `APP_API_KEY` to a random secret of at least 32 characters:
 
-```powershell
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Start the server:
+
+```bash
 uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
-Open `http://127.0.0.1:8000/login` and sign in with the application key, or set a distinct REVIEW_ACCESS_KEY (32-200 characters) for browser-only demo access. For API clients, use the `X-API-Key` header. Browser login uses a signed HttpOnly cookie; browser call and support actions require the same origin. Other tool/API mutations still require the API key.
+Open `http://127.0.0.1:8000/login` and sign in with the key. API clients send it in the `X-API-Key` header:
 
-## TrackingMore setup
-
-Register TEST Carrier records in your account with courier code `test-carrier`. For September, the fixtures are `TEST1234123421`, `TEST1234123441`, `TEST1234123461`, and `TEST1234123431`. The seed switches the prefix to `TEST2` for even months on initial database creation. Fetching an unregistered record does not create it. The live adapter uses TrackingMore v4 and the `Tracking-Api-Key` header.
-
-## Vapi setup
-
-Set local `VAPI_PRIVATE_KEY`, `VAPI_ASSISTANT_ID` (leave blank for initial creation), and `PUBLIC_API_URL` to your hosted HTTPS API URL. Run:
-
-```powershell
-python configure_vapi.py
+```bash
+curl -s -X POST http://127.0.0.1:8000/orders/lookup \
+  -H "X-API-Key: $APP_API_KEY" -H "Content-Type: application/json" \
+  -d '{"order_number": "DD1042", "email": "alex@example.com"}'
 ```
 
-The script updates this project's assistant, tools, prompt, webhook authentication, and 60-second browser join timeout. It saves a newly created assistant ID to local `.env`. Keep `VAPI_PRIVATE_KEY` local. On Render, add `VAPI_PUBLIC_KEY` and `VAPI_ASSISTANT_ID` to enable browser calls. The server creates calls with the public key; the browser receives only its room URL and call ID.
+Voice calls need a Vapi account (see [Voice setup](#voice-setup)). Live tracking needs a TrackingMore key (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
 
-The unmodified Daily browser library is pinned to `@daily-co/daily-js` 0.92.2 from `https://unpkg.com/@daily-co/daily-js@0.92.2`; its license is in `assets/DAILY_LICENSE.txt`. `assets/room.js` handles microphone permissions, explicit audio subscriptions, Vapi readiness signaling, and remote audio playback.
+With Docker: `docker compose up --build`.
 
-## API and dashboard
+## Demo data
+
+| Order | Email | Scenario |
+| --- | --- | --- |
+| DD1042 | alex@example.com | In transit, with a carrier ETA |
+| DD1043 | jamie@example.com | Carrier-marked delivered (report it missing to test escalation) |
+| DD1044 | sam@example.com | Carrier exception |
+| DD1045 | alex@example.com | Not shipped yet |
+| DD1046 | taylor@example.com | Split shipment: one package in transit, one item unshipped |
+
+Alex's email alone returns two orders, to test disambiguation. The demo postcode is `10001`.
+
+## Voice setup
+
+1. In `.env`, set `VAPI_PRIVATE_KEY`, `VAPI_PUBLIC_KEY` and `PUBLIC_API_URL` (the backend's public HTTPS URL). Leave `VAPI_ASSISTANT_ID` blank the first time.
+2. Run `python3 configure_vapi.py`. It creates or updates the assistant, tools, prompt and webhook authentication, and saves the assistant ID to `.env`.
+3. On the hosting service, set `VAPI_PUBLIC_KEY` and `VAPI_ASSISTANT_ID`. Keep `VAPI_PRIVATE_KEY` local only.
+
+The agent's behavior is defined in [agent_prompt.txt](agent_prompt.txt). The Daily browser library is vendored unmodified in `assets/daily.js` (license in `assets/DAILY_LICENSE.txt`). `assets/room.js` handles microphone permission, audio subscriptions and playback.
+
+## API
 
 | Endpoint | Purpose |
 | --- | --- |
-| GET /health | Authenticated health check |
-| POST /orders/lookup | Verify and select mock order(s) |
-| POST /orders/tracking | Verify and fetch carrier status per package |
-| POST /vapi/webhook | Execute tools and process end-of-call reports |
-| GET /metrics | Application call metrics and handoff history |
-| GET / | Custom dashboard |
-| GET /voice | Customer browser call |
-| GET /support | Human support desk |
+| `POST /orders/lookup` | Verify the caller and find their order(s) |
+| `POST /orders/tracking` | Verify, then fetch carrier status per package |
+| `POST /vapi/webhook` | Run agent tools and store end-of-call reports |
+| `GET /metrics` | Call outcomes, sentiment, duration and handoff history |
+| `GET /health` | Authenticated health check |
+| `GET /` · `/voice` · `/support` | Dashboard, customer call, human support desk |
 
-Resolution rate includes completed recorded calls; only caller-confirmed resolution should be marked resolved. Duration uses provider timestamps. Sentiment is the agent's classification, with unknown allowed; it is not a customer survey. Escalation requests and reported rep joins are displayed separately. A reported join means room join plus accepted AI mute, not independent proof of two-way audio.
+## Testing
 
-## Docker and cloud
-
-```powershell
-docker compose up --build
-```
-
-Compose persists local SQLite in a named volume. `render.yaml` deploys the Docker API and a separate PostgreSQL database. Render supplies `DATABASE_URL`. The live Render Docker deployment has been verified; local Docker Compose has not been independently executed.
-
-## Verification
-
-```powershell
-python -m unittest test_backend -v
+```bash
+python3 -m unittest test_backend -v
 node test_room.cjs
 ```
 
-Backend tests use isolated SQLite databases and mocked carrier/provider responses. The JavaScript test checks permission ordering, subscription and playback readiness, microphone activity, and cleanup. These tests do not prove live human audio or every spoken edge case.
+The backend tests use isolated SQLite databases and mocked provider responses. They cover verification, personal-data minimization, split and unshipped orders, provider failures, handoff states and access control. The JavaScript test covers microphone permission ordering, audio subscription and cleanup.
 
+The live behaviors that automated tests can't prove, like spoken edge cases and two-person handoff audio, have a manual test plan in [docs/TESTING.md](docs/TESTING.md).
 
-## Pilot limits
+## Known limits
 
-Orders are mock data, with no Shopify write access. Robin cannot issue refunds, cancel orders, or change addresses. Human actions remain manual. Free Render services can sleep; warm the app before calls. Free PostgreSQL expires after 30 days and has no backups. Browser handoff keeps the AI/provider session active, and the observed Vapi recording captured the customer but omitted the human rep. Browser-only REVIEW_ACCESS_KEY is available for demos. It permits calls and support actions but not direct tool APIs. Shared-key login remains a controlled pilot; production would need separate customer and staff access, stronger verification, retention controls, and durable hosting.
+- Orders are mock data, with no write access to a real store. Robin can't refund, cancel or change addresses; those stay with humans.
+- Login is a shared key. Production would need separate customer and staff access and stronger caller verification.
+- The handoff is a browser room takeover, not a phone transfer. Robin is muted but stays in the room.
+- In testing, Vapi's call recording captured the customer but not the human rep.
+- Sentiment is the agent's own classification, not a customer survey.
 
+## Project structure
+
+```
+app.py               FastAPI app: auth, order lookup, tracking, webhook, metrics
+handoff.py           Support queue, rep presence and Daily room handoff
+seed.py              Mock orders
+database.py          SQLite / PostgreSQL connection wrapper
+configure_vapi.py    Creates or updates the Vapi assistant and tools
+agent_prompt.txt     Robin's instructions
+*.html, assets/      Login, customer call, support desk and dashboard
+test_backend.py      Backend tests
+test_room.cjs        Browser audio tests
+```
